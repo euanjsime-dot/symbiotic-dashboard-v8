@@ -85,11 +85,44 @@ def fetch_holdings():
         if not user_id:
             return []
         
+        # Fetch holdings
         response = supabase.table('holdings')\
-            .select('*, assets(id, name, symbol, type, currency)')\
+            .select('*')\
             .eq('user_id', user_id)\
             .execute()
-        return response.data
+        
+        holdings = response.data
+        
+        # Manually fetch asset info for each holding by ticker
+        if holdings:
+            for holding in holdings:
+                ticker = holding.get('ticker')
+                if ticker:
+                    # Try to find matching asset by symbol
+                    asset_response = supabase.table('assets')\
+                        .select('*')\
+                        .eq('symbol', ticker)\
+                        .limit(1)\
+                        .execute()
+                    
+                    if asset_response.data:
+                        holding['assets'] = asset_response.data[0]
+                    else:
+                        # Create a fake asset object if not found
+                        holding['assets'] = {
+                            'id': None,
+                            'name': holding.get('company_name', ticker),
+                            'symbol': ticker,
+                            'type': 'stock',  # Assume stock from Trading212
+                            'currency': 'GBP'
+                        }
+                
+                # Map holdings columns to expected names
+                holding['average_price'] = holding.get('avg_price', 0)
+                holding['current_price'] = holding.get('avg_price', 0)  # We don't have current_price in holdings
+                holding['cost_basis'] = (holding.get('avg_price', 0) or 0) * (holding.get('quantity', 0) or 0)
+        
+        return holdings
     except Exception as e:
         st.error(f"Error fetching holdings: {str(e)}")
         return []
@@ -112,7 +145,7 @@ def fetch_signals():
 def fetch_prediction_markets():
     """Fetch Polymarket prediction data"""
     try:
-        response = supabase.table('prediction_markets')\
+        response = supabase.table('predictions')\
             .select('*')\
             .order('volume', desc=True)\
             .limit(10)\
