@@ -145,9 +145,9 @@ def fetch_signals():
 def fetch_prediction_markets():
     """Fetch Polymarket prediction data"""
     try:
-        response = supabase.table('predictions')\
+        response = supabase.table('polymarket_markets')\
             .select('*')\
-            .order('volume', desc=True)\
+            .order('volume_24h', desc=True)\
             .limit(10)\
             .execute()
         return response.data
@@ -582,38 +582,55 @@ def main():
             st.markdown("### 🎲 Top Markets by Volume")
             
             for market in prediction_markets:
-                probability = (market.get('probability', 0) or 0) * 100
-                volume = market.get('volume', 0) or 0
+                # yes_price is the probability (0.0 to 1.0)
+                yes_price = market.get('yes_price', 0) or 0
+                probability = yes_price * 100
+                volume = market.get('volume_24h', 0) or 0
                 
-                # Determine confidence level
-                if probability > 80 or probability < 20:
+                # Determine confidence level based on conviction column
+                conviction = market.get('conviction', '').upper()
+                if conviction == 'HIGH':
                     confidence = "🔥 High"
-                    color = "green" if probability > 50 else "red"
-                elif probability > 65 or probability < 35:
+                    color = "green"
+                elif conviction == 'MEDIUM':
                     confidence = "⚡ Medium"
                     color = "orange"
                 else:
-                    confidence = "📊 Uncertain"
-                    color = "gray"
+                    # Fallback to probability-based confidence
+                    if probability > 80 or probability < 20:
+                        confidence = "🔥 High"
+                        color = "green" if probability > 50 else "red"
+                    elif probability > 65 or probability < 35:
+                        confidence = "⚡ Medium"
+                        color = "orange"
+                    else:
+                        confidence = "📊 Uncertain"
+                        color = "gray"
                 
                 with st.container(border=True):
                     col1, col2, col3 = st.columns([3, 1, 1])
                     
                     with col1:
                         st.markdown(f"**{market.get('title', 'Unknown')}**")
-                        st.caption(market.get('category', 'General'))
+                        if market.get('question'):
+                            st.caption(market.get('question'))
+                        st.caption(f"Category: {market.get('category', 'General')}")
                     
                     with col2:
-                        st.metric("Probability", f"{probability:.1f}%")
+                        st.metric("YES Price", f"{probability:.1f}%")
                     
                     with col3:
                         st.metric("Confidence", confidence)
                     
                     # Additional details
-                    if market.get('end_date'):
-                        st.caption(f"🗓️ Ends: {market['end_date']}")
-                    if volume > 0:
-                        st.caption(f"💰 Volume: ${volume:,.0f}")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if market.get('end_date'):
+                            end_date_str = market['end_date'][:10] if isinstance(market['end_date'], str) else str(market['end_date'])[:10]
+                            st.caption(f"🗓️ Ends: {end_date_str}")
+                    with col2:
+                        if volume > 0:
+                            st.caption(f"💰 24h Volume: ${volume:,.0f}")
     
     # ========================================
     # TAB 6: SYSTEM HEALTH
